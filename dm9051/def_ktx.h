@@ -1,9 +1,33 @@
 //
 // "def_ktx.h"
+//  content: kernel version info and flag
 //  content: sub definition of conf_ver.h
 //  content: definitions of 'def_generation.h' (previous include-file)
 //  content: kernel version info macro usage
 //  content: misc
+
+// Example: for 5.8 kernel, put 'clang-opt="-DLINUX_VERSION_CODE=0x50800" into llvm section of ~/.perfconfig'
+// #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
+// #define DMDRIVER_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
+
+//[work as KT development definition]
+#ifndef KERNEL_VERSION
+#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
+#endif
+//[work with KT development version-declaration]
+#ifndef LINUX_VERSION_CODE
+#define LINUX_VERSION_CODE  KERNEL_VERSION(5,8,0) //KT5.8.0= 0x50800, 
+#define	LINUX_VERSION_CODE_UD	//User_Define
+#endif
+//[KT support flag]
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
+#define LNX_KERNEL_v58	1
+#else
+#define LNX_KERNEL_v58	0
+#endif
+
+//[work for DRIVER version definition]
+#define DMDRIVER_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
 
 #ifdef ON_RELEASE
 #define printnb_packet0(args...)   ((void)0)  //[programmer's mask]
@@ -61,25 +85,6 @@
 #define DEF_OPE    1  //open
 #define DEF_STO    1  //stop
  /* (Code select).e */
-
-// Example: for 5.8 kernel, put 'clang-opt="-DLINUX_VERSION_CODE=0x50800" into llvm section of ~/.perfconfig'
-// #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
-
-//[work with KT development definition]
-#ifndef KERNEL_VERSION
-#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
-#endif
-//[work with KT development version-declaration]
-#ifndef LINUX_VERSION_CODE
-#define LINUX_VERSION_CODE  KERNEL_VERSION(5,8,0) //=0x50800, KT5.8.0
-#define	LINUX_VERSION_CODE_UD	//User_Define
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
-#define LNX_KERNEL_v58	1
-#else
-#define LNX_KERNEL_v58	0
-#endif
 
 // To be complete for customize purpose
 #ifdef QCOM_CONF_BOARD_YES

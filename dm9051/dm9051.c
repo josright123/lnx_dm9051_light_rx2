@@ -55,6 +55,8 @@
  *                     20210308, macro DM_LIGHT_RX, support
  *  v2.2_light_rx - 20210322, format on_line (https://codebeautify.org/c-formatter-beautifier) 
  *  v2.2_light_rx - 20210323, clean up and only valid lines stay
+ *  v2.3_light_rx2 - 20210401, Make "new_spinb.hc" with 1nfo9 and trans_dm9 individually 
+ *								for easily maintain spi_sync()
  */
 
 #include <linux/module.h>
@@ -107,16 +109,26 @@ extern int spi_register_board_info(struct spi_board_info
 
 #include "board_infos.h"
 
-#ifdef DM_CONF_INTERRUPT
+//[Driver information]
+#define	DRV_VERSION_CODE	DMDRIVER_VERSION(2,3,0) //VER2.3.0= 0x20300
+#define	DRV_PROJECT_NAME	"light_rx2"
+#define	DRV_VERSION_DATE	"20210401"
 
-#define DRV_VERSION	\
-	"4.14.79-KT.INT-2.2zcd.light.rx2.20210331"
-#else
-#define DRV_VERSION	\
-	"4.14.79-KT.POLL-2.2zcd.light.rx2.20210331"
-#endif
-
+char DRV_VERSION[50];
 u8 DM9051_fifo_reset_flg = 0; //GLOBAL CONTROL FLAG.
+
+void DRV_VERSION_CONSTRUCT(void)
+{
+#ifdef DM_CONF_INTERRUPT
+	char *optype= "INT";
+#else
+	char *optype= "POLL";
+#endif
+	sprintf(DRV_VERSION, "DM9051.%s-Ver%d.%d.%s.%s", optype,
+		(DRV_VERSION_CODE>>16 & 0xff),(DRV_VERSION_CODE>>8 & 0xff),
+		DRV_PROJECT_NAME,
+		DRV_VERSION_DATE);
+}
 
 //[#include "board_dev0.c"]
 #if DM_DM_CONF_RARE_PROJECTS_DTS_USAGE
@@ -3427,7 +3439,7 @@ dm9051_probe(struct spi_device * spi) {
     db -> chip_code_state = CCS_NUL;
     printk("dm951 %s: at MAC: %pM, summary (%s)\n", //isNO_IRQ %d 
       ndev -> name, ndev -> dev_addr, mac_src); //ndev->irq,
-    printk("dm951 %s: bus_num %d, spi_cs %d\n", //"(%s)", DRV_VERSION
+    printk("dm951 %s: bus_num %d, spi_cs %d\n",
       ndev -> name, spi -> master -> bus_num,
       spi -> chip_select);
     printk("[dm95_spi] spi_setup db->spidev->bits_per_word= %d\n", db -> spidev -> bits_per_word);
@@ -3692,13 +3704,15 @@ dm9051_init(void) {
   printk("%s, SPI %s\n", CARDNAME_9051, RD_MODEL_VERSION);
   printk("%s, SPI %s\n", CARDNAME_9051, WR_MODEL_VERSION);
 
+  DRV_VERSION_CONSTRUCT();
   #ifdef LINUX_VERSION_CODE_UD
   printk("%s Driver loaded, KV= %d.%d.%d is the number user-key-in\n", CARDNAME_9051,
 	(LINUX_VERSION_CODE>>16 & 0xff),(LINUX_VERSION_CODE>>8 & 0xff),(LINUX_VERSION_CODE & 0xff));
   #endif
-  printk("%s Driver loaded, KV= %d.%d.%d, V%s (%s)\n", CARDNAME_9051,
+  printk("%s Driver loaded, KV= %d.%d.%d, %s\n", 
+	CARDNAME_9051,
 	(LINUX_VERSION_CODE>>16 & 0xff),(LINUX_VERSION_CODE>>8 & 0xff),(LINUX_VERSION_CODE & 0xff),
-	DRV_VERSION, "LOOP_XMIT"); //str_drv_xmit_type="LOOP_XMIT"
+	DRV_VERSION);
 
   #ifdef MTK_CONF_YES
   printk("%s, SPI %s\n", CARDNAME_9051, MSTR_MTKDMA_VERSION);
