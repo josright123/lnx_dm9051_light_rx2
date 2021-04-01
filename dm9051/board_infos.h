@@ -117,34 +117,20 @@ typedef struct board_info {
 	
 #ifdef MORE_DM9051_MUTEX
 	struct mutex	 	spi_lock;
-	#ifdef DM_CONF_TASKLET
-	struct tasklet_struct phypoll_tl;
-	struct tasklet_struct xmit_tl;
-	#else //~DM_CONF_TASKLET
 	struct delayed_work	phypoll_work;
 	struct delayed_work	xmit_work;
-	#endif
 #endif
 
 	struct mutex	 	addr_lock;	/* dm9051's lock;*/
 	spinlock_t		statelock_tx1_rx1; /* state lock;*/
 	
 	#ifdef DM_CONF_PHYPOLL	
-	#ifdef DM_CONF_TASKLET
-	struct tasklet_struct phy_poll_tl;
-	#else //~DM_CONF_TASKLET
 	struct delayed_work	phy_poll;
 	#endif
-	#endif
 	
-	#ifdef DM_CONF_TASKLET
-	struct tasklet_struct rxctrl_tl;
-	struct tasklet_struct rx_tl;
-	#else  //~DM_CONF_TASKLET
 	struct work_struct	rxctrl_work;
 	#ifndef DM_CONF_THREAD_IRQ
 	struct delayed_work	rx_work; //"INT_or_poll_Work;"
-	#endif
 	#endif
 		
 	//[int	scanmem;]

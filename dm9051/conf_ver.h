@@ -55,9 +55,6 @@
 #ifdef DM_CONF_INTERRUPT
 //#define DM_CONF_THREAD_IRQ
 #endif
-#ifndef DM_CONF_INTERRUPT
-//#define DM_CONF_TASKLET
-#endif
 
  /* 4-x.{Supp}:: */
  
