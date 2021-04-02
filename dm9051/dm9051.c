@@ -57,6 +57,10 @@
  *  v2.2_light_rx - 20210323, clean up and only valid lines stay
  *  v2.3_light_rx2 - 20210401, Make "new_spinb.hc" with 1nfo9 and trans_dm9 individually 
  *								for easily maintain spi_sync()
+ *                 - 20210401, Make this branch only eliminate 'DM_CONF_TASKLET'
+ *                   		#ifndef DM_CONF_INTERRUPT
+ *                   		//#define DM_CONF_TASKLET
+ *                   		#endif
  */
 
 #include <linux/module.h>
@@ -1743,36 +1747,6 @@ dm9051_INTPschedule_isr(board_info_t * db, int sch_cause) {
     //.printk("(%d)dm9051_start_xmit, Need skb = skb_dequeue(&db->txq) to get tx-data\n", db->_nSCH_XMIT);
     break;
   }
-
-  #ifdef DM_CONF_TASKLET
-  //switch (sch_cause) {
-  //case R_SCH_INIT:
-  //case R_SCH_INFINI:
-    //case R_SCH_LINK:
-  //case R_SCH_INT:
-  //  tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, 0);
-  //  break;
-  //case R_SCH_INT_GLUE:
-  //  tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, 0); 
-  //  break;
-  //case R_SCH_PHYPOLL:
-  //  #ifdef MORE_DM9051_MUTEX
-  //  tasklet_schedule( & db -> phypoll_tl); //schedule_.delayed_work(&db->x, 0);
-  //  #else
-  //  tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, 0); 
-  //  #endif
-  //  break;
-  //  #ifdef DM_CONF_POLLALL_INTFLAG
-  //case R_SCH_XMIT:
-  //  #ifdef MORE_DM9051_MUTEX
-  //  tasklet_schedule( & db -> xmit_tl); //schedule_.delayed_work(&db->y, 0);
-  //  #else
-  //  tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, 0);
-  //  #endif
-  //  break;
-  //  #endif
-  //}
-  #else //~DM_CONF_TASKLET
   //spin_lock(&db->statelock_tx_rx);//mutex_lock(&db->addr_lock);
   switch (sch_cause) {
     #ifdef DM_CONF_INTERRUPT
@@ -1812,7 +1786,6 @@ dm9051_INTPschedule_isr(board_info_t * db, int sch_cause) {
     /* 0, Because @delay: number of jiffies to wait or 0 for immediate execution */
   }
   //spin_unlock(&db->statelock_tx_rx);//mutex_unlock(&db->addr_lock);
-  #endif
 }
 
 #ifdef DM_CONF_POLLALL_INTFLAG
@@ -1821,32 +1794,6 @@ dm9051_INTPschedule_isr(board_info_t * db, int sch_cause) {
 static void
 dm9051_INTPschedule_weight(board_info_t * db, unsigned long delay) {
   static int sd_weight = 0;
-
-  #ifdef DM_CONF_TASKLET
-  if (db -> DERFER_rwregs[MD_ReadPTR] != db -> DERFER_rwregs1[MD_ReadPTR]) {
-    tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, 0); 
-    return;
-  }
-
-  if (db -> DERFER_rwregs1[RXM_WrtPTR] == db -> DERFER_rwregs1[MD_ReadPTR]) {
-    tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, delay); 
-    return;
-  }
-
-  sd_weight++;
-  if (!(sd_weight % 3)) {
-    if (sd_weight >= 6000) /*(sd_weight>=5000) in disp no adj*/
-      sd_weight = 0;
-
-    if (sd_weight == 0 && (db -> DERFER_calc1 >> 8) != 0) // fewer disp
-      printk("-[dm9 SaveCPU for: MDWA 0x%x (RO %d.%d%c)]-\n", db -> DERFER_rwregs1[RXM_WrtPTR], db -> DERFER_calc1 >> 8, db -> DERFER_calc1 & 0xff, '%');
-
-    tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, delay);  // slower ,
-    return;
-  }
-  tasklet_schedule( & db -> rx_tl); //schedule_.delayed_work(&db->r, 0); 
-  #else //~DM_CONF_TASKLET
-
   if (db -> DERFER_rwregs[MD_ReadPTR] != db -> DERFER_rwregs1[MD_ReadPTR]) {
     schedule_delayed_work( & db -> rx_work, 0);
     return;
@@ -1875,7 +1822,6 @@ dm9051_INTPschedule_weight(board_info_t * db, unsigned long delay) {
     return;
   }
   schedule_delayed_work( & db -> rx_work, 0);
-  #endif
 }
 #endif //!DM_EXTREME_CPU_MODE && !DM_LIGHT_RX	
 #endif
@@ -2376,11 +2322,7 @@ void rx_work_cyclekeep(board_info_t * db, int has_txrx) // link_sched_delay_work
     //if ((db->DERFER_calc1>>8) < 50)
     //	schedule_delayed_work(&db->rx_work, DM_TIMER_EXPIRE2); // slow ,
     //else
-    #ifdef DM_CONF_TASKLET
-    tasklet_schedule( & db -> rx_tl);
-    #else //~DM_CONF_TASKLET
     schedule_delayed_work( & db -> rx_work, DM_TIMER_EXPIRE3); // faster ,
-    #endif
   }
   #endif //20210204	
 
@@ -2502,33 +2444,18 @@ static void dm9051_simple_mutex_dm9051(board_info_t * db) {
     IMR_ENABLE(db, 1);
 }
 
-#ifdef DM_CONF_TASKLET
-//static void
-//dm_hash_table_task(unsigned long data) {
-//  board_info_t * db = (board_info_t * ) data;
-//  db -> Enter_hash = 1;
-//}
-#else //~DM_CONF_TASKLET
 static void
 dm_hash_table_work(struct work_struct * work) {
   board_info_t * db = container_of(work, board_info_t, rxctrl_work);
   db -> Enter_hash = 1;
   //dm_hash_table(db);
 }
-#endif
 
 #ifdef DM_CONF_PHYPOLL
 
 int db_phy = 0;
 int nAll_run_gap = 0;
 
-#ifdef DM_CONF_TASKLET
-/*
-static void 
-dm_phy_poll_task(unsigned long data) {
-  }
-*/
-#else //~DM_CONF_TASKLET
 static void
 dm_phy_poll(struct work_struct * w) {
   //#ifdef DM_CONF_PHYPOLL
@@ -2568,30 +2495,14 @@ dm_phy_poll(struct work_struct * w) {
 
   #ifdef DM_CONF_POLLALL_INTFLAG
   sched_phy:
-    #else
+  #else
   //sched_phy:
   #endif
   if (netif_running(db -> ndev))
     dm_schedule_phy(db);
   //#endif
 }
-#endif
 #endif //DM_CONF_PHYPOLL
-
-#ifdef DM_CONF_TASKLET
-/*static void dm9051_rx_task(unsigned long data) {
-	board_info_t *db = (board_info_t *) data;
-	#ifdef MORE_DM9051_MUTEX
-	mutex_lock(&db->spi_lock);
-	#endif
-
-	dm9051_mutex_dm9051(db);
-	
-	#ifdef MORE_DM9051_MUTEX
-	mutex_unlock(&db->spi_lock);
-	#endif
-}*/
-#else //~DM_CONF_TASKLET
 
 #ifdef DM_CONF_THREAD_IRQ
 static void dm9051_rx_work_proc(board_info_t * db) {
@@ -2621,24 +2532,8 @@ static void dm9051_rx_work(struct work_struct * work) { //TODO. (over-night ? re
   #endif
 }
 #endif
-#endif //DM_CONF_TASKLET
 
 #ifdef MORE_DM9051_MUTEX
-#ifdef DM_CONF_TASKLET
-static void dm9051_phypoll_tasklet(unsigned long data) {
-  board_info_t * db = (board_info_t * ) data;
-  mutex_lock( & db -> spi_lock);
-  dm9051_simple_mutex_dm9051(db); //dm9051_mutex_dm9051(db);
-  mutex_unlock( & db -> spi_lock);
-}
-static void dm9051_xmit_tasklet(unsigned long data) {
-  //[or by spin_lock_irq(&db->hwlock)/spin_unlock_irq(&db->hwlock)]
-  board_info_t * db = (board_info_t * ) data;
-  mutex_lock( & db -> spi_lock);
-  dm9051_simple_mutex_dm9051(db); //dm9051_mutex_dm9051(db);
-  mutex_unlock( & db -> spi_lock);
-}
-#else //~DM_CONF_TASKLET
 static void dm9051_phypoll_work(struct work_struct * work) {
   struct delayed_work * dw = to_delayed_work(work);
   board_info_t * db = container_of(dw, board_info_t, phypoll_work);
@@ -2653,25 +2548,9 @@ static void dm9051_xmit_work(struct work_struct * work) {
   dm9051_simple_mutex_dm9051(db); //dm9051_mutex_dm9051(db);
   mutex_unlock( & db -> spi_lock);
 }
-#endif
 #endif //MORE_DM9051_MUTEX
 
 void define_delay_work(board_info_t * db) {
-  #ifdef DM_CONF_TASKLET
-  /*
-  tasklet_init(&db->rxctrl_tl, dm_hash_table_task,(unsigned long) db);
-  #ifdef DM_CONF_PHYPOLL	
-  tasklet_init(&db->phy_poll_tl, dm_phy_poll_task,(unsigned long) db);
-  #endif
-  tasklet_init(&db->rx_tl, dm9051_rx_task, (unsigned long) db);
-
-  #ifdef MORE_DM9051_MUTEX
-  tasklet_init(&db->phypoll_tl, dm9051_phypoll_tasklet, (unsigned long) db);
-  tasklet_init(&db->xmit_tl, dm9051_xmit_tasklet, (unsigned long) db);
-  #endif
-  */
-  #else //~DM_CONF_TASKLET
-
   INIT_WORK( & db -> rxctrl_work, dm_hash_table_work);
   #ifdef DM_CONF_PHYPOLL
   INIT_DELAYED_WORK( & db -> phy_poll, dm_phy_poll);
@@ -2685,24 +2564,11 @@ void define_delay_work(board_info_t * db) {
   INIT_DELAYED_WORK( & db -> phypoll_work, dm9051_phypoll_work);
   INIT_DELAYED_WORK( & db -> xmit_work, dm9051_xmit_work);
   #endif
-  #endif
 }
 
 /*[when DM9051 stop]*/
 //[../new_load/driver_ops.c]    
 void sched_delay_work_cancel(board_info_t * db) {
-  #ifdef DM_CONF_TASKLET
-  #ifdef DM_CONF_PHYPOLL
-  tasklet_kill( & db -> phy_poll_tl);
-  #endif
-  tasklet_kill( & db -> rxctrl_tl);
-  tasklet_kill( & db -> rx_tl);
-  #ifdef MORE_DM9051_MUTEX
-  tasklet_kill( & db -> phypoll_tl);
-  tasklet_kill( & db -> xmit_tl);
-  #endif
-  #else //~DM_CONF_TASKLET
-
   #ifdef DM_CONF_PHYPOLL
   cancel_delayed_work_sync( & db -> phy_poll);
   #endif
@@ -2715,7 +2581,6 @@ void sched_delay_work_cancel(board_info_t * db) {
   #ifdef MORE_DM9051_MUTEX
   cancel_delayed_work_sync( & db -> phypoll_work);
   cancel_delayed_work_sync( & db -> xmit_work);
-  #endif
   #endif
 }
 
