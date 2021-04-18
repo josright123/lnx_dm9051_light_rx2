@@ -3039,6 +3039,21 @@ dm9051_open(struct net_device * dev) {
     #if DEF_SPIRW
     iiow(db, DM9051_RCR, db -> rcr_all);
     #endif
+
+	//... 20210418 [Read thru spi-sync before schedule start]
+    nsr = iior(db, DM9051_NSR);
+    link = !!(nsr & 0x40); //& NSR_LINKST
+	
+    #ifdef DM_CONF_POLLALL_INTFLAG
+    printk("[dm951_open].INT_EN.e -------\n");
+    printk("[dm951_open].INT_EN.e Link Status is: %d nsr %02x [nSCH_LINK= %d]\n", link, nsr, db -> nSCH_LINK);
+    #else
+    printk("[dm951_open].POLL.e -------\n");
+    printk("[dm951_open].POLL.e Link Status is: %d nsr %02x [nSCH_LINK= %d]\n", link, nsr, db -> nSCH_LINK);
+    #endif
+    
+    //... 20210418 [Schedule start while end-of-dm951_open]
+    printk("[dm951_open].[END].[SCHEDULE START] -------\n");
     #if defined DM_CONF_PHYPOLL & DM_CONF_APPSRC
     //... 20210312 [Make for Not used] 20210312 Quacomm  MDM9626 Project
 	//... Must use for while no traffic can maintain(sched poll) the phy's link state
@@ -3046,16 +3061,6 @@ dm9051_open(struct net_device * dev) {
     #endif
     #if DM_CONF_APPSRC
     dm_sched_start_rx(db); //Finally, start the delay work, to be the last calling, for you can not read/wrie dm9051 register since poling schedule work has began! 
-    #endif
-
-    nsr = iior(db, DM9051_NSR);
-    link = !!(nsr & 0x40); //& NSR_LINKST
-    #ifdef DM_CONF_POLLALL_INTFLAG
-    printk("[dm951_open].INT_EN.e -------\n");
-    printk("[dm951_open].INT_EN.e Link Status is: %d nsr %02x [nSCH_LINK= %d]\n", link, nsr, db -> nSCH_LINK);
-    #else
-    printk("[dm951_open].POLL.e -------\n");
-    printk("[dm951_open].POLL.e Link Status is: %d nsr %02x [nSCH_LINK= %d]\n", link, nsr, db -> nSCH_LINK);
     #endif
   } while (0);
   #endif
