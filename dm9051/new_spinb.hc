@@ -167,7 +167,7 @@ static int std_spi_xfer_buf_lagecy(board_info_t * db, u8 * txb, u8 * rxb, unsign
   db -> fer -> cs_change = 0;
   ret = spi_sync(db -> spidev, db -> msg);
   if (ret < 0) {
-    dbg_log("spi lagecy cmd %c\n", txb[0]);
+    dbg_log("spi lagecy cmd %02x\n", txb[0]);
     if (rxb)
       dbg_log("spi rxbuf %02x %02x\n", rxb[0], rxb[1]);
     else
