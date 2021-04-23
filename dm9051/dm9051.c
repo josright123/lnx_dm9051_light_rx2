@@ -114,9 +114,10 @@ extern int spi_register_board_info(struct spi_board_info
 #include "board_infos.h"
 
 //[Driver information]
-#define	DRV_VERSION_CODE	DMDRIVER_VERSION(2,3,0) //VER2.3.0= 0x20300
+//(VER2.3.0= 0x20300)
+#define	DRV_VERSION_CODE	DMDRIVER_VERSION(2,3,0) 
 #define	DRV_PROJECT_NAME	"light_rx2"
-#define	DRV_VERSION_DATE	"20210401"
+#define	DRV_VERSION_DATE	"20210422"
 
 char DRV_VERSION[50];
 u8 DM9051_fifo_reset_flg = 0; //GLOBAL CONTROL FLAG.
@@ -891,10 +892,12 @@ int rx_tx_isr0(board_info_t * db) {
 #define DM_TYPE_IPL 0x00
 static bool SB_skbing_packet_chk_data(board_info_t * db, u8 * phd, u8 * rdptr) {
   struct net_device * dev = db -> ndev;
-  u8 flg_disp = 0;
+  //u8 flg_disp = 0;
 
-  if ((phd[1] & 0x40) && (!(rdptr[0] & 1))) {
-    flg_disp = 1;
+  if (phd[1] & 0x40) { //multi-cast
+    if (rdptr[0] & 1)
+      return true;
+    //flg_disp = 1;
     dev -> stats.rx_length_errors = 3;
     dev -> stats.rx_crc_errors = 6;
     dev -> stats.rx_fifo_errors = 9;
@@ -902,46 +905,80 @@ static bool SB_skbing_packet_chk_data(board_info_t * db, u8 * phd, u8 * rdptr) {
     dev -> stats.rx_over_errors++;
     printk("\n[@dm9.multiErr (rxhdr %02x %02x %02x %02x)] mac %02x %02x %02x, %lu\n", phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2],
       dev -> stats.rx_over_errors); //dev->stats
-  } else if (rdptr[0] != dev -> dev_addr[0] || rdptr[1] != dev -> dev_addr[1] || rdptr[2] != dev -> dev_addr[2]) {
-    if ((rdptr[4] == DM_TYPE_ARPH && rdptr[5] == DM_TYPE_ARPL) && (rdptr[12] != DM_TYPE_ARPH || rdptr[13] != DM_TYPE_ARPL)) // special in data-skip
-    ; // error=fail //;;[current has rdptr[12]/rdptr[13]]
-    if ((rdptr[4] == DM_TYPE_IPH && rdptr[5] == DM_TYPE_IPL) && (rdptr[12] != DM_TYPE_IPH || rdptr[13] != DM_TYPE_IPL)) // special in data-skip
-    ; // error=fail //;;[current has rdptr[12]/rdptr[13]]
-    else if (rdptr[0] & 1) //'skb->data[0]'
-      return true; // ok
+    return false;
+  } else if ( (db->rcr_all & RCR_PRMSC) == 0) { // when non promiscuous, check uni-cast (on promiscuous, no need check)
+    if (rdptr[0] != dev -> dev_addr[0] || rdptr[1] != dev -> dev_addr[1] || rdptr[2] != dev -> dev_addr[2]) { //wrong uni-cast                                       
+      //if ((rdptr[4]==DM_TYPE_ARPH && rdptr[5]==DM_TYPE_ARPL) && (rdptr[12]!=DM_TYPE_ARPH || rdptr[13]!=DM_TYPE_ARPL)) // special in data-skip
+      //  ; // special in data-skip
+      //if ((rdptr[4]==DM_TYPE_IPH && rdptr[5]==DM_TYPE_IPL) && (rdptr[12]!=DM_TYPE_IPH || rdptr[13]!=DM_TYPE_IPL))  // special in data-skip
+      //  ; // special in data-skip  
+      //flg_disp = 1;
+      dev -> stats.rx_frame_errors++;    
+      printk("[@dm9.frame err (hdr %02x %02x %02x %02x)] [%02x %02x %02x %02x %02x %02x] %lu\n",
+        phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2], rdptr[3], rdptr[4], rdptr[5],
+        dev -> stats.rx_frame_errors);
+      //[01 00 9e 00] unicast and len is less 256 ;"Custom report 20210204/'lan_aging_error3.log'"
+      #if DISP_SKB_UNI_ERR
+      if (1){
+        if (phd[0] == 0x01 && phd[1] == 0x00 && phd[3] == 0x00) {
+          printk("[@dm9.[warn] unknow uni-cast frame (hdr %02x %02x %02x %02x)] %02x %02x %02x %02x %02x %02x\n",
+          phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2], rdptr[3], rdptr[4], rdptr[5]);
+          //; fail //return true;
+        } else if (phd[0] == 0x01 && phd[1] == 0x00 && phd[3] != 0x00) {
+          u16 len;
+          len = (phd[3] << 8) + phd[2];
+          printk("[@dm9.[warn] unknow uni-cast long frame (hdr %02x %02x %02x %02x)] len %d\n",
+            phd[0], phd[1], phd[2], phd[3], len);
+        }
+      }
+      //db->mac_process = 1 - db->mac_process;
+      #endif      
+      return false;
+    }    
+    db -> bC.rx_unicst_counter++;
+    db -> nSCH_UniRX++;
+    return true;
+  }
+  /*= else if (rdptr[0] != dev -> dev_addr[0] || rdptr[1] != dev -> dev_addr[1] || rdptr[2] != dev -> dev_addr[2]) { //uni-cast
+    if (((rdptr[4] == DM_TYPE_ARPH && rdptr[5] == DM_TYPE_ARPL) && (rdptr[12] != DM_TYPE_ARPH || rdptr[13] != DM_TYPE_ARPL)) ||  // special in data-skip
+      ((rdptr[4] == DM_TYPE_IPH && rdptr[5] == DM_TYPE_IPL) && (rdptr[12] != DM_TYPE_IPH || rdptr[13] != DM_TYPE_IPL)) ||  // special in data-skip
+      ( db->rcr_all & RCR_PRMSC == 0)) { // non promiscuous but unknow uni-cast 
+      //flg_disp = 1;
+      dev -> stats.rx_frame_errors++;
+      //PRINTK("\n");
+      printk("[@dm9.frame err (hdr %02x %02x %02x %02x)] [%02x %02x %02x %02x %02x %02x] %lu\n",
+        phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2], rdptr[3], rdptr[4], rdptr[5],
+        dev -> stats.rx_frame_errors);
 
-    flg_disp = 1;
-    dev -> stats.rx_frame_errors++;
-    //PRINTK("\n");
-    printk("[@dm9.frame err (hdr %02x %02x %02x %02x)] [%02x %02x %02x %02x %02x %02x] %lu\n",
-      phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2], rdptr[3], rdptr[4], rdptr[5],
-      dev -> stats.rx_frame_errors);
-
-    //[01 00 9e 00] unicast and len is less 256 ;"Custom report 20210204/'lan_aging_error3.log'"
-    #if DISP_SKB_UNI_ERR
-    if (1){
-	    u16 len;
-	    len = (phd[3] << 8) + phd[2];
-	    if (phd[0] == 0x01 && phd[1] == 0x00 && phd[3] == 0x00) {
-	      printk("[@dm9.[warn] unknow uni-cast frame (hdr %02x %02x %02x %02x)] %02x %02x %02x %02x %02x %02x\n",
-		phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2], rdptr[3], rdptr[4], rdptr[5]);
-	      //; fail //return true;
-	    } else if (phd[0] == 0x01 && phd[1] == 0x00 && phd[3] != 0x00)
-	      printk("[@dm9.[warn] unknow uni-cast long frame (hdr %02x %02x %02x %02x)] len %d\n",
-		phd[0], phd[1], phd[2], phd[3], len);
+      //[01 00 9e 00] unicast and len is less 256 ;"Custom report 20210204/'lan_aging_error3.log'"
+      #if DISP_SKB_UNI_ERR
+      if (1){
+        u16 len;
+        len = (phd[3] << 8) + phd[2];
+        if (phd[0] == 0x01 && phd[1] == 0x00 && phd[3] == 0x00) {
+          printk("[@dm9.[warn] unknow uni-cast frame (hdr %02x %02x %02x %02x)] %02x %02x %02x %02x %02x %02x\n",
+          phd[0], phd[1], phd[2], phd[3], rdptr[0], rdptr[1], rdptr[2], rdptr[3], rdptr[4], rdptr[5]);
+          //; fail //return true;
+        } else if (phd[0] == 0x01 && phd[1] == 0x00 && phd[3] != 0x00)
+          printk("[@dm9.[warn] unknow uni-cast long frame (hdr %02x %02x %02x %02x)] len %d\n",
+            phd[0], phd[1], phd[2], phd[3], len);
+      }
+      //db->mac_process = 1 - db->mac_process;
+      #endif
+      return false;
     }
-    //db->mac_process = 1 - db->mac_process;
-    #endif
-  }        
+  }*/        
 
-  if (flg_disp) {
+  //if (flg_disp) {
     //printnb_packet(rdptr, prxhdr -> RxLen - 4);
     //printnb_packet( & rdptr[prxhdr -> RxLen - 4], 4);
-    return false;
-  }
+    //return false;
+  //}
 
+  /*=.all done.
   db -> bC.rx_unicst_counter++;
   db -> nSCH_UniRX++;
+  return true;*/
   return true;
 }
 
