@@ -61,6 +61,8 @@
  *                   		#ifndef DM_CONF_INTERRUPT
  *                   		//#define DM_CONF_TASKLET
  *                   		#endif
+ *                 - 20210705, wait-method of "tx_req" enhance, "new_printnb.hc" enhance!
+ *                 - (20210615, create 'DM_MASK_EXTREME_CPU_MODE' for too much CPU occupied)
  */
 
 #include <linux/module.h>
@@ -117,7 +119,7 @@ extern int spi_register_board_info(struct spi_board_info
 //(VER2.3.0= 0x20300)
 #define	DRV_VERSION_CODE	DMDRIVER_VERSION(2,3,0) 
 #define	DRV_PROJECT_NAME	"light_rx2"
-#define	DRV_VERSION_DATE	"20210422"
+#define	DRV_VERSION_DATE	"20210705" //(update)
 
 char DRV_VERSION[50];
 u8 DM9051_fifo_reset_flg = 0; //GLOBAL CONTROL FLAG.
@@ -742,16 +744,21 @@ dm9051_continue_xmit_inRX(board_info_t * db) //dm9051_continue_poll_xmit
           }
         }
       }
-      while ((ior(db, DM9051_TCR) & TCR_TXREQ) && (++nWait < 20))
+
+#if 1
+      //[JJ Do it shorter waiting time] 20210617
+      //while ((ior(db, DM9051_TCR) & TCR_TXREQ) && (++nWait < 20))
+      // ;
+      while((!(ior(db, DM9051_NSR) & (NSR_TX2END | NSR_TX1END))) && (++nWait < 20))
 		;
+#endif      
+      nTx++;
       if (nWait == 20)
-        printk("[dm9] tx_step timeout B\n");
+        printk("[dm9] tx_step timeout B --- WARNING --- do-nTx %d\n", nTx);
 
       if (db -> bt.local_cntTXREQ == 2) {
         db -> bt.local_cntTXREQ = 0;
       }
-
-      nTx++;
 	  
      dm9outblk(db, tx_skb -> data, tx_skb -> len);
 //#ifdef QCOM_TX_DWORD_BOUNDARY //dm9051_outblk
@@ -3207,7 +3214,7 @@ void control_objects_init(board_info_t * db) {
   #if DM_CONF_APPSRC
   toend_stop_queue1(ndev, NUM_QUEUE_TAIL); //ending_stop_queue1(ndev);	
   #endif
-  skb_queue_head_init( & db -> txq); //[Init.]
+  skb_queue_head_init( & db -> txq); //[May be no-need here! In 'dm9051_open' is OK!]
 }
 
 //spi_user.c
