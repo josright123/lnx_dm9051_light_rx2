@@ -11,6 +11,9 @@ struct {
   char bff[100];
 } nb;
 
+int nbn;
+char nbbff[100];
+
 /* message print [0: disable, 1: enable] */
 void printnb_init(int enab)
 {
@@ -28,6 +31,14 @@ void printnb_process(const char *format, ...)
   va_start(args, format);
   vaf.fmt= format;
   vaf.va= &args;
+  
+  //[JJ extra-check-1-2-3] 20210617
+  nbn = sprintf(&nbbff[0], "%pV", &vaf);
+  if ((nb.n + nbn) >= 100){
+    printk(nb.bff);
+    nb.n = 0;
+  }
+  
   nb.n += sprintf(&nb.bff[nb.n], "%pV", &vaf); 
   va_end(args);
   
